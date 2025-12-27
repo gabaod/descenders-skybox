@@ -16,5 +16,7 @@
 16. drag that cloudshadow_material onto your CloudShadows object
 17. position that object over your terrain
 
-18. Right now the cloud shadows is not working as intended.
-19. 
+
+
+Right now the cloud shadows is not working as intended.
+ 
