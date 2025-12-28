@@ -3,6 +3,10 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
     Properties
     {
         _TimeOfDay ("Time Of Day", Range(0,1)) = 0.5
+        _SunIntensity ("Sun Intensity", Range(0,3)) = 1.5
+        _MoonIntensity ("Moon Intensity", Range(0,1)) = 0.3
+        _SunSize ("Sun Size", Range(0.01, 0.2)) = 0.05
+        _MoonSize ("Moon Size", Range(0.01, 0.2)) = 0.04
 
         _CloudDensity ("Cloud Density", Range(0,1)) = 0.65
         _CloudScale ("Cloud Scale", Range(0.5, 4)) = 1.6
@@ -14,6 +18,12 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
         _HighCloudSpeed ("High Cloud Speed", Range(0, 1)) = 0.12
 
         _CloudShadowStrength ("Cloud Shadow Strength", Range(0,1)) = 0.4
+        
+        _SmallStarDensity ("Small Star Density", Range(0,1)) = 0.5
+        _SmallStarBrightness ("Small Star Brightness", Range(0,2)) = 1.0
+        _LargeStarDensity ("Large Star Density", Range(0,1)) = 0.2
+        _LargeStarBrightness ("Large Star Brightness", Range(0,2)) = 1.2
+        _StarTwinkleSpeed ("Star Twinkle Speed", Range(0,5)) = 1.0
     }
 
     SubShader
@@ -33,9 +43,14 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
             struct v2f { float4 pos : SV_POSITION; float3 viewDir : TEXCOORD0; };
 
             float _TimeOfDay;
+            float _SunIntensity, _MoonIntensity;
+            float _SunSize, _MoonSize;
             float _CloudDensity, _CloudScale, _CloudSpeed, _CloudSoftness;
             float _HighCloudDensity, _HighCloudScale, _HighCloudSpeed;
             float _CloudShadowStrength;
+            float _SmallStarDensity, _SmallStarBrightness;
+            float _LargeStarDensity, _LargeStarBrightness;
+            float _StarTwinkleSpeed;
 
             v2f vert (appdata v)
             {
@@ -48,6 +63,7 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
 
             // ---------- NOISE ----------
             float hash(float2 p) { return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453); }
+            float hash3(float3 p) { return frac(sin(dot(p,float3(127.1,311.7,74.7)))*43758.5453); }
             float valueNoise(float2 p)
             {
                 float2 i=floor(p), f=frac(p);
@@ -62,54 +78,147 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
                 for(int i=0;i<4;i++){ v+=valueNoise(p)*a; p*=2; a*=0.5; }
                 return v;
             }
+            
+            // ---------- STAR GENERATION ----------
+            float generateStars(float3 dir, float density, float size, float brightness, float time)
+            {
+                // Create grid of potential star positions
+                float3 starPos = dir * 100.0; // Scale up for more star positions
+                float3 gridPos = floor(starPos);
+                
+                // Generate random star at each grid cell
+                float starRandom = hash3(gridPos);
+                
+                // Only show star if random value is above density threshold
+                if (starRandom > (1.0 - density))
+                {
+                    // Calculate distance to center of grid cell
+                    float3 cellCenter = gridPos + 0.5;
+                    float dist = length(starPos - cellCenter);
+                    
+                    // Create star point
+                    float star = 1.0 - smoothstep(0.0, size, dist);
+                    
+                    // Add twinkle effect
+                    float twinkle = sin(time * _StarTwinkleSpeed + starRandom * 100.0) * 0.3 + 0.7;
+                    
+                    return star * brightness * twinkle;
+                }
+                
+                return 0.0;
+            }
 
             fixed4 frag (v2f i) : SV_Target
             {
-                // -------- TIME SPLITS --------
-                float morning = saturate(1 - abs(_TimeOfDay - 0.0) * 4);
-                float midday  = saturate(1 - abs(_TimeOfDay - 0.33) * 4);
-                float sunset  = saturate(1 - abs(_TimeOfDay - 0.66) * 4);
-                float night   = saturate(1 - abs(_TimeOfDay - 1.0) * 4);
+                // -------- FULL DAY CYCLE TIME SPLITS --------
+                // 0.0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, 1.0 = midnight
+                
+                float midnight1 = saturate(1 - abs(_TimeOfDay - 0.0) * 8);    // Peak at 0.0
+                float sunrise   = saturate(1 - abs(_TimeOfDay - 0.25) * 6);   // Peak at 0.25
+                float noon      = saturate(1 - abs(_TimeOfDay - 0.5) * 6);    // Peak at 0.5
+                float sunset    = saturate(1 - abs(_TimeOfDay - 0.75) * 6);   // Peak at 0.75
+                float midnight2 = saturate(1 - abs(_TimeOfDay - 1.0) * 8);    // Peak at 1.0
+                
+                // Combine both midnight peaks
+                float midnight = max(midnight1, midnight2);
 
                 // -------- SKY COLORS --------
                 float3 topColor =
-                    morning * float3(0.4,0.6,0.9) +
-                    midday  * float3(0.2,0.45,0.9) +
-                    sunset  * float3(0.15,0.2,0.45) +
-                    night   * float3(0.02,0.04,0.1);
+                    midnight * float3(0.02,0.04,0.1) +
+                    sunrise  * float3(0.4,0.6,0.9) +
+                    noon     * float3(0.2,0.45,0.9) +
+                    sunset   * float3(0.15,0.2,0.45);
 
                 float3 horizonColor =
-                    morning * float3(1.0,0.85,0.6) +
-                    midday  * float3(0.85,0.95,1.0) +
-                    sunset  * float3(1.0,0.5,0.25) +
-                    night   * float3(0.05,0.07,0.15);
+                    midnight * float3(0.05,0.07,0.15) +
+                    sunrise  * float3(1.0,0.85,0.6) +
+                    noon     * float3(0.85,0.95,1.0) +
+                    sunset   * float3(1.0,0.5,0.25);
 
-                // -------- SUN --------
-                float sunHeight =
-                    morning * -0.15 +
-                    midday  * 0.35 +
-                    sunset  * -0.35 +
-                    night   * -0.6;
-
+                // -------- SUN COLOR --------
                 float3 sunColor =
-                    morning * float3(1.0,0.8,0.5) +
-                    midday  * float3(1,1,0.95) +
-                    sunset  * float3(1.0,0.4,0.2) +
-                    night   * float3(0.1,0.1,0.2);
-
-                float sunIntensity =
-                    morning * 1.2 +
-                    midday  * 1.5 +
-                    sunset  * 1.3 +
-                    night   * 0.15;
+                    midnight * float3(0.1,0.1,0.2) +
+                    sunrise  * float3(1.0,0.8,0.5) +
+                    noon     * float3(1,1,0.95) +
+                    sunset   * float3(1.0,0.4,0.2);
 
                 // -------- SKY GRADIENT --------
                 float y = saturate(i.viewDir.y * 0.5 + 0.5);
                 float3 sky = lerp(horizonColor, topColor, y);
 
-                // -------- SUN DIR --------
-                float3 sunDir = normalize(_WorldSpaceLightPos0.xyz + float3(0,sunHeight,0));
-                float sun = pow(saturate(dot(i.viewDir,sunDir)),10) * sunIntensity;
+                // -------- CALCULATE SUN POSITION --------
+                // Full day cycle: sun moves in complete arc
+                // 0.0 = midnight (below horizon), 0.25 = sunrise (horizon), 0.5 = noon (overhead), 0.75 = sunset (horizon), 1.0 = midnight
+                
+                // Offset by -0.25 to align correctly, then multiply by 2PI for full circle
+                float sunAngle = (_TimeOfDay - 0.25) * 3.14159 * 2.0; // Shifted to start at horizon
+                
+                // Calculate sun direction vector
+                // sin gives us height (y), cos gives us horizontal position (x)
+                float3 sunDir = normalize(float3(cos(sunAngle), sin(sunAngle), 0));
+                
+                // -------- RENDER SUN DISC --------
+                float sunDist = distance(normalize(i.viewDir), sunDir);
+                float sunDisc = 1.0 - smoothstep(_SunSize * 0.9, _SunSize, sunDist);
+                
+                // Only show sun when above horizon
+                float sunVisible = step(0, sunDir.y);
+                sunDisc *= sunVisible;
+                
+                // Sun glow
+                float sunGlow = pow(saturate(dot(i.viewDir, sunDir)), 15.0) * 0.5 * sunVisible;
+                
+                // -------- CALCULATE MOON POSITION --------
+                // Moon should be opposite the sun in the sky
+                // When sun is at 0.25 (horizon), moon should be at 0.75 (opposite horizon)
+                // When sun is at 0.5 (overhead), moon should be at 0.0/1.0 (below horizon)
+                float moonTimeOffset = _TimeOfDay + 0.5; // Shift by half a day
+                if (moonTimeOffset > 1.0) moonTimeOffset -= 1.0; // Wrap around
+                
+                float moonAngle = (moonTimeOffset - 0.25) * 3.14159 * 2.0;
+                float3 moonDir = normalize(float3(cos(moonAngle), sin(moonAngle), 0));
+                
+                // -------- RENDER MOON DISC --------
+                float moonDist = distance(normalize(i.viewDir), moonDir);
+                float moonDisc = 1.0 - smoothstep(_MoonSize * 0.9, _MoonSize, moonDist);
+                
+                // Only show moon when above horizon
+                float moonVisible = step(0, moonDir.y);
+                moonDisc *= moonVisible;
+                
+                // Make moon brighter and more visible
+                float3 moonColor = float3(0.9, 0.9, 1.0) * 2.0; // Brighter bluish-white moon
+
+                // -------- STARS --------
+                // Stars only visible during deep night: 0.0-0.13 and 0.85-1.0
+                float nightIntensity = 0.0;
+                
+                if (_TimeOfDay <= 0.13)
+                {
+                    // Fade in from 0.0 to 0.13
+                    nightIntensity = 1.0 - (_TimeOfDay / 0.13);
+                }
+                else if (_TimeOfDay >= 0.85)
+                {
+                    // Fade in from 0.85 to 1.0
+                    nightIntensity = (_TimeOfDay - 0.85) / 0.15;
+                }
+                
+                float3 stars = float3(0,0,0);
+                if (nightIntensity > 0.01 && i.viewDir.y > 0) // Only render stars at night and above horizon
+                {
+                    // Small stars (more numerous, dimmer)
+                    float smallStars = generateStars(i.viewDir, _SmallStarDensity, 0.15, _SmallStarBrightness, _Time.y);
+                    
+                    // Large stars (fewer, brighter)
+                    float largeStars = generateStars(i.viewDir, _LargeStarDensity, 0.25, _LargeStarBrightness, _Time.y * 0.7);
+                    
+                    // Combine both star layers
+                    float totalStars = smallStars + largeStars;
+                    
+                    // Star color (slightly bluish white)
+                    stars = float3(0.9, 0.95, 1.0) * totalStars * nightIntensity;
+                }
 
                 // -------- CLOUDS --------
                 float2 uv = i.viewDir.xz / max(i.viewDir.y + 1.0, 0.3);
@@ -127,7 +236,13 @@ Shader "Custom/ProceduralSkybox2017_TimeOfDay"
 
                 float3 clouds = cloudMask * sunColor * shadow;
 
-                float3 finalColor = sky + clouds + sunColor * sun * (1-cloudMask);
+                // -------- COMBINE EVERYTHING --------
+                float3 finalColor = sky;
+                finalColor += stars; // Add stars behind clouds
+                finalColor += clouds;
+                finalColor += sunColor * sunDisc * _SunIntensity;
+                finalColor += sunColor * sunGlow * _SunIntensity;
+                finalColor += moonColor * moonDisc * _MoonIntensity * 5.0;
 
                 return fixed4(finalColor,1);
             }
