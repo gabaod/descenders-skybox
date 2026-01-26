@@ -51,6 +51,16 @@ public class DynamicSkyboxController : ModBehaviour
 	public float moonPhase = 0f;
 	public Color moonColor = new Color(0.9f, 0.9f, 1f);
 
+	[Header("Moon Textures")]
+	public Texture2D moonAlbedoTexture;
+	public Texture2D moonNormalTexture;
+	[Range(0f, 360f)]
+	public float moonRotationSpeed = 1f;
+	[Range(0f, 5f)]
+	public float moonLibrationAmount = 1f;
+	[Range(0f, 10f)]
+	public float moonLibrationSpeed = 1f;
+
 	[Header("Sky Colors")]
 	public Gradient skyGradient;
 	public Gradient horizonGradient;
@@ -155,6 +165,7 @@ public class DynamicSkyboxController : ModBehaviour
 	private Vector2 lowCloudOffset;
 	private Vector2 highCloudOffset;
 	private Vector2 stormCloudOffset;
+	private float moonRotation = 0f;
 
 	private bool isInitialized = false;
 
@@ -563,6 +574,10 @@ public class DynamicSkyboxController : ModBehaviour
 		calculatedStarVisibility *= starVisibility;
 
 		float adjustedSunIntensity = sunIntensity * sunVisibility;
+		moonRotation += moonRotationSpeed * Time.deltaTime;
+		if (moonRotation >= 360f) moonRotation -= 360f;
+		skyboxMaterial.SetFloat("_MoonRotation", moonRotation);
+		Debug.Log("Moon Rotation: " + moonRotation);
 
 		skyboxMaterial.SetVector("_SunDirection", sunDirection);
 		skyboxMaterial.SetVector("_MoonDirection", moonDirection);
@@ -579,6 +594,22 @@ public class DynamicSkyboxController : ModBehaviour
 		skyboxMaterial.SetFloat("_MoonHaloSize", moonHaloSize);
 		skyboxMaterial.SetFloat("_MoonHaloIntensity", moonHaloIntensity);
 		skyboxMaterial.SetColor("_MoonHaloColor", moonHaloColor);
+		//skyboxMaterial.SetColor("_MoonColor", Color.red);
+		// Moon textures and animation
+		if (moonAlbedoTexture != null)
+			skyboxMaterial.SetTexture("_MoonTexture", moonAlbedoTexture);
+		else
+			skyboxMaterial.SetTexture("_MoonTexture", Texture2D.whiteTexture);
+
+		if (moonNormalTexture != null)
+			skyboxMaterial.SetTexture("_MoonNormal", moonNormalTexture);
+		else
+			skyboxMaterial.SetTexture("_MoonNormal", null);
+
+		// Calculate libration (wobble effect)
+		float librationX = Mathf.Sin(Time.time * moonLibrationSpeed) * moonLibrationAmount * 0.01f;
+		float librationY = Mathf.Cos(Time.time * moonLibrationSpeed * 0.7f) * moonLibrationAmount * 0.01f;
+		skyboxMaterial.SetVector("_MoonLibration", new Vector2(librationX, librationY));
 
 		skyboxMaterial.SetColor("_SkyColor", currentSkyColor);
 		skyboxMaterial.SetColor("_HorizonColor", currentHorizonColor);
@@ -621,7 +652,10 @@ public class DynamicSkyboxController : ModBehaviour
 		skyboxMaterial.SetColor("_FogColor", fogColor);
 		skyboxMaterial.SetFloat("_FogHeight", fogHeight);
 		skyboxMaterial.SetFloat("_FogFalloff", fogFalloff);
-
+		// TEMPORARY TEST - Remove after confirming rotation works
+//skyboxMaterial.SetFloat("_MoonRotation", Time.time * 30f); // 30 degrees per second
+		Debug.Log("Setting moon rotation to: " + moonRotation +
+		  ", Material received: " + skyboxMaterial.GetFloat("_MoonRotation"));
 		DynamicGI.UpdateEnvironment();
 	}
 
