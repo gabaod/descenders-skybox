@@ -172,8 +172,6 @@ public class DynamicSkyboxController : ModBehaviour
 	void OnEnable()
 	{
 		Debug.Log("DynamicSkyboxController: OnEnable called");
-		Debug.Log("Initial values - TimeOfDay: " + timeOfDay + ", AutoAdvanceTime: " + autoAdvanceTime + ", TimeSpeed: " + timeSpeed);
-		Debug.Log("Sunrise: " + sunriseTime + ", Sunset: " + sunsetTime);
 		if (!isInitialized)
 		{
 			SetupSkybox();
@@ -240,8 +238,6 @@ public class DynamicSkyboxController : ModBehaviour
 
 		RenderSettings.skybox = skyboxMaterial;
 		DynamicGI.UpdateEnvironment();
-		Debug.Log("Skybox set to RenderSettings. AutoAdvanceTime: " + autoAdvanceTime + ", TimeSpeed: " + timeSpeed);
-
 
 		// Find existing directional light - DO NOT CREATE
 		if (directionalLight == null)
@@ -305,15 +301,15 @@ public class DynamicSkyboxController : ModBehaviour
 
 	void OnValidate()
 	{
-#if UNITY_EDITOR
-		if (skyboxMaterial == null && (existingSkyboxMaterial != null || createNewMaterial))
-		{
-			SetupSkybox();
-			SetupGradients();
-		}
-		UpdateSkybox();
-		UpdateLighting();
-#endif
+		#if UNITY_EDITOR
+			if (skyboxMaterial == null && (existingSkyboxMaterial != null || createNewMaterial))
+			{
+				SetupSkybox();
+				SetupGradients();
+			}
+			UpdateSkybox();
+			UpdateLighting();
+		#endif
 	}
 
 	void Update()
@@ -329,34 +325,13 @@ public class DynamicSkyboxController : ModBehaviour
 				isInitialized = true;
 			}
 
-			// Debug Time.deltaTime to see if it's zero
-			if (Time.frameCount % 60 == 0)
-			{
-				Debug.Log("Time.deltaTime: " + Time.deltaTime + ", Application.isPlaying: " + Application.isPlaying);
-			}
-
 			// Auto advance time
 			if (autoAdvanceTime)
 			{
 				float previousTime = timeOfDay;
 				float deltaTime = Time.deltaTime * timeSpeed / 3600f * 24f;
 
-				Debug.Log("BEFORE increment - timeOfDay: " + timeOfDay.ToString("F4") +
-						  ", deltaTime: " + deltaTime.ToString("F6") +
-						  ", sunsetTime: " + sunsetTime.ToString("F4"));
-
 				timeOfDay += deltaTime;
-
-				Debug.Log("AFTER increment - timeOfDay: " + timeOfDay.ToString("F4"));
-
-				// Debug time progression
-				if (Time.frameCount % 60 == 0) // Every second at 60fps
-				{
-					Debug.Log("Time progression - Previous: " + previousTime.ToString("F2") +
-							  ", Delta: " + deltaTime.ToString("F4") +
-							  ", New: " + timeOfDay.ToString("F2") +
-							  ", Sunset: " + sunsetTime.ToString("F2"));
-				}
 
 				if (timeOfDay >= 24f)
 				{
@@ -396,7 +371,6 @@ public class DynamicSkyboxController : ModBehaviour
 			// Update lighting
 			UpdateLighting();
 
-			Debug.Log("Update completed successfully");
 		}
 		catch (System.Exception e)
 		{
@@ -482,8 +456,6 @@ public class DynamicSkyboxController : ModBehaviour
 		// Validate sunrise/sunset times
 		if (sunsetTime <= sunriseTime)
 			sunsetTime = sunriseTime + 0.1f;
-
-		Debug.Log("UpdateSkybox called - TimeOfDay: " + timeOfDay.ToString("F2") + ", Sunrise: " + sunriseTime + ", Sunset: " + sunsetTime);
 
 		// Calculate sun position based on sunrise and sunset times
 		float sunDayDuration = sunsetTime - sunriseTime;
@@ -577,7 +549,6 @@ public class DynamicSkyboxController : ModBehaviour
 		moonRotation += moonRotationSpeed * Time.deltaTime;
 		if (moonRotation >= 360f) moonRotation -= 360f;
 		skyboxMaterial.SetFloat("_MoonRotation", moonRotation);
-		Debug.Log("Moon Rotation: " + moonRotation);
 
 		skyboxMaterial.SetVector("_SunDirection", sunDirection);
 		skyboxMaterial.SetVector("_MoonDirection", moonDirection);
@@ -652,10 +623,7 @@ public class DynamicSkyboxController : ModBehaviour
 		skyboxMaterial.SetColor("_FogColor", fogColor);
 		skyboxMaterial.SetFloat("_FogHeight", fogHeight);
 		skyboxMaterial.SetFloat("_FogFalloff", fogFalloff);
-		// TEMPORARY TEST - Remove after confirming rotation works
-//skyboxMaterial.SetFloat("_MoonRotation", Time.time * 30f); // 30 degrees per second
-		Debug.Log("Setting moon rotation to: " + moonRotation +
-		  ", Material received: " + skyboxMaterial.GetFloat("_MoonRotation"));
+
 		DynamicGI.UpdateEnvironment();
 	}
 
