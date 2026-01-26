@@ -1,5 +1,6 @@
 Shader "Custom/DynamicSkybox" {
     Properties {
+        _DebugMoon ("Debug Moon UVs", Float) = 0
         _SunDirection ("Sun Direction", Vector) = (0, 1, 0, 0)
         _MoonDirection ("Moon Direction", Vector) = (0, -1, 0, 0)
         _SunSize ("Sun Size", Float) = 1.0
@@ -8,6 +9,10 @@ Shader "Custom/DynamicSkybox" {
         _MoonIntensity ("Moon Intensity", Float) = 0.7
         _SunColor ("Sun Color", Color) = (1, 0.95, 0.8, 1)
         _MoonColor ("Moon Color", Color) = (0.9, 0.9, 1, 1)
+        _MoonTexture ("Moon Texture", 2D) = "white" {}
+        _MoonNormal ("Moon Normal Map", 2D) = "bump" {}
+        _MoonRotation ("Moon Rotation", Float) = 0.0
+        _MoonLibration ("Moon Libration", Vector) = (0, 0, 0, 0)
         _MoonHaloSize ("Moon Halo Size", Float) = 1.5
         _MoonHaloIntensity ("Moon Halo Intensity", Float) = 0.3
         _MoonHaloColor ("Moon Halo Color", Color) = (0.7, 0.8, 1, 0.2)
@@ -68,6 +73,7 @@ Shader "Custom/DynamicSkybox" {
                 float3 viewDir : TEXCOORD0;
             };
             
+            float _DebugMoon;
             float3 _SunDirection;
             float3 _MoonDirection;
             float _SunSize;
@@ -76,6 +82,10 @@ Shader "Custom/DynamicSkybox" {
             float _MoonIntensity;
             float4 _SunColor;
             float4 _MoonColor;
+            sampler2D _MoonTexture;
+            sampler2D _MoonNormal;
+            float _MoonRotation;
+            float2 _MoonLibration;
             float _MoonHaloSize;
             float _MoonHaloIntensity;
             float4 _MoonHaloColor;
@@ -178,26 +188,121 @@ Shader "Custom/DynamicSkybox" {
             
             float3 drawMoon(float3 viewDir, float3 moonDir) {
                 float moonDist = distance(viewDir, moonDir);
-                float moon = 1.0 - smoothstep(0.0, _MoonSize * 0.05, moonDist);
+                float moonRadius = _MoonSize * 0.05;
                 
                 // Moon halo
                 float halo = 1.0 - smoothstep(0.0, _MoonHaloSize * 0.1, moonDist);
                 halo = pow(halo, 3.0) * _MoonHaloIntensity;
                 
-                // Moon phase shading
-                float3 moonRight = normalize(cross(moonDir, float3(0, 1, 0)));
-                float3 toPixel = viewDir - moonDir;
-                float xPos = dot(toPixel, moonRight) / (_MoonSize * 0.05);
-                
-                float phaseShade = 1.0;
-                float phase = _MoonPhase / 7.0;
-                if (phase < 0.5) {
-                    phaseShade = smoothstep(-1.0, 1.0, xPos + (1.0 - phase * 4.0));
-                } else {
-                    phaseShade = smoothstep(-1.0, 1.0, -xPos + ((phase - 0.5) * 4.0));
+                // Check if we're within the moon disc
+                if (moonDist > moonRadius) {
+                    return _MoonHaloColor.rgb * halo;
                 }
                 
-                return _MoonColor.rgb * moon * _MoonIntensity * phaseShade + _MoonHaloColor.rgb * halo;
+                // Calculate UV coordinates for moon texture
+                // Create a local coordinate system for the moon
+                float3 moonUp = float3(0, 1, 0);
+                float3 moonRight = normalize(cross(moonDir, moonUp));
+                moonUp = normalize(cross(moonRight, moonDir));
+                
+                // Project view direction onto moon plane
+                float3 toPixel = viewDir - moonDir;
+                float u = dot(toPixel, moonRight) / moonRadius;
+                float v = dot(toPixel, moonUp) / moonRadius;
+                
+                // Convert to UV coordinates (0-1 range) BEFORE rotation
+                float2 moonUV = float2(u * 0.5 + 0.5, v * 0.5 + 0.5);
+                
+                // Apply rotation to UV coordinates around center (0.5, 0.5)
+                float2 centeredUV = moonUV - 0.5;
+                float angle = _MoonRotation * 0.0174532925; // Convert degrees to radians (PI/180)
+                float cosAngle = cos(angle);
+                float sinAngle = sin(angle);
+                
+                // Rotate the UV coordinates
+                float2 rotatedUV;
+                rotatedUV.x = centeredUV.x * cosAngle - centeredUV.y * sinAngle;
+                rotatedUV.y = centeredUV.x * sinAngle + centeredUV.y * cosAngle;
+                
+                // Move back to 0-1 range
+                //float2 finalUV = rotatedUV + 0.5;
+                moonUV = rotatedUV + 0.5;
+                
+                // Apply libration (wobble effect)
+                //finalUV += _MoonLibration;
+                moonUV += _MoonLibration;
+
+                // Circular mask for moon disc
+                float discMask = 1.0 - smoothstep(0.95, 1.0, length(float2(u, v)));
+                
+                // Sample textures with rotated UVs
+                //float4 moonTex = tex2D(_MoonTexture, finalUV);
+                //float3 moonNorm = UnpackNormal(tex2D(_MoonNormal, finalUV));
+                float4 moonTex = tex2D(_MoonTexture, moonUV);
+                float3 moonNorm = UnpackNormal(tex2D(_MoonNormal, moonUV));
+                
+                if (_DebugMoon > 0.5)
+                {
+                // DEBUG: SUPER OBVIOUS rotating visualization
+                // This completely overrides the moon texture with a simple pattern
+               // float2 markerPos = float2(0.5, 0.2);
+               // float markerDist = distance(finalUV, markerPos);
+              //  float marker = 1.0 - smoothstep(0.0, 0.08, markerDist);
+                
+                // Also add crosshairs to see UV space clearly
+              //  float crosshairH = step(0.49, finalUV.y) * step(finalUV.y, 0.51);
+               // float crosshairV = step(0.49, finalUV.x) * step(finalUV.x, 0.51);
+              //  float crosshair = max(crosshairH, crosshairV);
+                
+                // Override everything for debug
+             //   moonTex.rgb = float3(0.5, 0.5, 0.5); // Gray base
+             //   moonTex.rgb = lerp(moonTex.rgb, float3(1, 1, 0), crosshair); // Yellow crosshair
+              //  moonTex.rgb = lerp(moonTex.rgb, float3(1, 0, 0), marker); // Red marker
+                }
+                // Calculate lighting from sun direction
+                float3 moonNormal = normalize(moonNorm.x * moonRight + moonNorm.y * moonUp + moonNorm.z * moonDir);
+                float3 sunDir = normalize(_SunDirection);
+                float NdotL = max(0.0, dot(moonNormal, sunDir));
+                
+                // Moon phase shading based on sun position
+                float phase = _MoonPhase / 7.0;
+                float phaseShade = 1.0;
+                if (phase < 0.5) {
+                    phaseShade = smoothstep(-1.0, 1.0, u + (1.0 - phase * 4.0));
+                } else {
+                    phaseShade = smoothstep(-1.0, 1.0, -u + ((phase - 0.5) * 4.0));
+                }
+                
+                // Combine lighting
+                float3 moonColor = moonTex.rgb * _MoonColor.rgb;
+                moonColor *= NdotL * 0.7 + 0.3; // Some ambient light
+                moonColor *= phaseShade;
+                moonColor *= _MoonIntensity;
+                
+                // DEBUG OVERRIDE — DOES NOT AFFECT CLOUDS/SKY
+//                if (_DebugMoon > 0.5)
+//                {
+//                    float3 debugColor = float3(0.2, 0.2, 0.2);
+//                    // Yellow crosshair at UV center
+//                    float crossSize = 0.015;
+                    //float crossH = step(0.5 - crossSize, finalUV.x) * step(finalUV.x, 0.5 + crossSize);
+                    //float crossV = step(0.5 - crossSize, finalUV.y) * step(finalUV.y, 0.5 + crossSize);
+//                    float crossH = step(0.5 - crossSize, moonUV.x) * step(moonUV.x, 0.5 + crossSize);
+ //                   float crossV = step(0.5 - crossSize, moonUV.y) * step(moonUV.y, 0.5 + crossSize);
+ //                   float cross = max(crossH, crossV);
+  //                  debugColor = lerp(debugColor, float3(1,1,0), cross);
+
+                    // Red marker (rotates with UVs)
+//                    float2 markerPos = float2(0.5, 0.2);
+                    //float marker = 1.0 - smoothstep(0.0, 0.06, distance(finalUV, markerPos));
+ //                   float marker = 1.0 - smoothstep(0.0, 0.06, distance(moonUV, markerPos));
+//                    debugColor = lerp(debugColor, float3(1,0,0), marker);
+
+//                    return debugColor * discMask + _MoonHaloColor.rgb * halo;
+ //               }
+
+                // Apply disc mask and add halo
+                return moonColor * discMask + _MoonHaloColor.rgb * halo;
             }
             
             float3 drawStars(float3 viewDir) {
